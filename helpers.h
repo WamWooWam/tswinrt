@@ -3,7 +3,7 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
-#include "winmd_reader.h"
+#include <winmd_reader.h>
 
 using namespace std::literals;
 using namespace winmd::reader;

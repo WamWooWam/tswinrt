@@ -1,5 +1,6 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <Import Project="packages\Microsoft.Windows.WinMD.1.0.210311.4\build\native\Microsoft.Windows.WinMD.props" Condition="Exists('packages\Microsoft.Windows.WinMD.1.0.210311.4\build\native\Microsoft.Windows.WinMD.props')" />
   <ItemGroup Label="ProjectConfigurations">
     <ProjectConfiguration Include="Debug|Win32">
       <Configuration>Debug</Configuration>
@@ -115,28 +116,17 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="helpers.h" />
-    <ClInclude Include="impl\base.h" />
-    <ClInclude Include="impl\winmd_reader\cache.h" />
-    <ClInclude Include="impl\winmd_reader\column.h" />
-    <ClInclude Include="impl\winmd_reader\custom_attribute.h" />
-    <ClInclude Include="impl\winmd_reader\database.h" />
-    <ClInclude Include="impl\winmd_reader\enum.h" />
-    <ClInclude Include="impl\winmd_reader\enum_traits.h" />
-    <ClInclude Include="impl\winmd_reader\filter.h" />
-    <ClInclude Include="impl\winmd_reader\flags.h" />
-    <ClInclude Include="impl\winmd_reader\helpers.h" />
-    <ClInclude Include="impl\winmd_reader\index.h" />
-    <ClInclude Include="impl\winmd_reader\key.h" />
-    <ClInclude Include="impl\winmd_reader\pe.h" />
-    <ClInclude Include="impl\winmd_reader\schema.h" />
-    <ClInclude Include="impl\winmd_reader\signature.h" />
-    <ClInclude Include="impl\winmd_reader\table.h" />
-    <ClInclude Include="impl\winmd_reader\type_helpers.h" />
-    <ClInclude Include="impl\winmd_reader\view.h" />
-    <ClInclude Include="winmd_reader.h" />
     <ClInclude Include="writer.h" />
   </ItemGroup>
+  <ItemGroup>
+    <None Include="packages.config" />
+  </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
-  <ImportGroup Label="ExtensionTargets">
-  </ImportGroup>
+  <ImportGroup Label="ExtensionTargets" />
+  <Target Name="EnsureNuGetPackageBuildImports" BeforeTargets="PrepareForBuild">
+    <PropertyGroup>
+      <ErrorText>This project references NuGet package(s) that are missing on this computer. Use NuGet Package Restore to download them.  For more information, see http://go.microsoft.com/fwlink/?LinkID=322105. The missing file is {0}.</ErrorText>
+    </PropertyGroup>
+    <Error Condition="!Exists('packages\Microsoft.Windows.WinMD.1.0.210311.4\build\native\Microsoft.Windows.WinMD.props')" Text="$([System.String]::Format('$(ErrorText)', 'packages\Microsoft.Windows.WinMD.1.0.210311.4\build\native\Microsoft.Windows.WinMD.props'))" />
+  </Target>
 </Project>

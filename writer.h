@@ -5,7 +5,7 @@
 #include <string>
 #include <sstream>
 #include <filesystem>
-#include "winmd_reader.h"
+#include <winmd_reader.h>
 #include "helpers.h"
 
 using namespace winmd::reader;
