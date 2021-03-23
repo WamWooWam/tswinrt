@@ -14,6 +14,15 @@ class writer
 {
 private:
 	std::set<std::string> _banned_identifiers{ "function", "arguments", "package" };
+	std::map<std::string_view, std::map<std::string_view, std::string_view>> _namespace_type_map{
+		{
+			"Windows.Foundation", {
+				{ "DateTime", "Date" },
+				{ "TimeSpan", "number" },
+				{ "HResult", "number" },
+			}
+		}
+	};
 
 public:
 	writer(std::vector<std::string> assemblies, std::filesystem::path& path) : _cache(assemblies), _path(path), _basePath(path), _out()
@@ -326,7 +335,7 @@ public:
 			if (field.Flags().Static())
 				_out << "static ";
 
-			_out << normalise_member_name(field.Name()) << ": " << projection_type_name(semantics, false) << ";" << std::endl;
+			_out << normalise_member_name(field.Name()) << ": " << projection_type_name(semantics, false, true) << ";" << std::endl;
 		}
 
 		_out << "}" << std::endl;
@@ -342,6 +351,7 @@ public:
 
 		write_properties(type);
 		write_method_list(type, false);
+		write_event_list(type, true);
 
 		_out << "}" << std::endl;
 	}
@@ -361,9 +371,9 @@ public:
 		_out << " { " << std::endl;
 
 		write_properties(type);
-		//	write_ctors(type, true);
+		write_ctors(type, true);
 		write_method_list(type, true);
-		write_event_list(type);
+		write_event_list(type, false);
 
 		_out << "}" << std::endl;
 	}
@@ -374,15 +384,9 @@ public:
 		auto method = get_delegate_invoke(type);
 		method_signature method_sig{ method };
 
-		std::string return_type_name = "void";
-		if (method_sig.return_signature())
-		{
-			auto return_type = get_type_semantics(method_sig.return_signature().Type());
-			return_type_name = projection_type_name(return_type, false);
-		}
-
+		std::string return_type_name = get_return_type_name(method_sig, std::vector<method_signature::param_t>());
 		_out << "export type " << name << " = (";
-		write_parameter_list(method_sig);
+		write_parameter_list(method_sig, true);
 		_out << ") => " << return_type_name << ";" << std::endl;
 	}
 
@@ -435,7 +439,10 @@ public:
 				// retrieve property via reflection here
 			}
 
-			_out << normalise_member_name(prop.Name()) << ": " << projection_type_name(semantics, false) << ";" << std::endl;
+			_out << normalise_member_name(prop.Name()) << ": " << projection_type_name(semantics, false, true);
+			if (prop.Type().Type().is_szarray())
+				_out << "[]";
+			_out << ";" << std::endl;;
 		}
 	}
 
@@ -473,7 +480,7 @@ public:
 			method_signature ctor_sig{ ctor };
 			auto dist = distance(ctor.ParamList());
 
-			_out << whitespace(1) << "constructor(";
+			_out << whitespace(1) << "// constructor(";
 
 			bool first = true;
 			for (auto i = 0; i < dist; i++)
@@ -484,18 +491,18 @@ public:
 
 				auto& param = ctor_sig.params()[i];
 				auto param_type = get_type_semantics(param.second->Type());
-				auto param_type_name = projection_type_name(param_type, false);
+				auto param_type_name = projection_type_name(param_type, false, true);
 
 				_out << normalise_member_name(param.first.Name()) << ": " << param_type_name;
 
-				if (dist == max_dist)
+				/*if (dist == max_dist)
 				{
 					_out << " = null";
-				}
+				}*/
 			}
-			_out << ")";
+			_out << ");" << std::endl;
 
-			if (dist == max_dist && include_signature)
+			/*if (dist == max_dist && include_signature)
 			{
 				_out << " {" << std::endl;
 				_out << whitespace(2) << "throw new Error('not implemented')" << std::endl;
@@ -504,8 +511,10 @@ public:
 			else
 			{
 				_out << ";" << std::endl;
-			}
+			}*/
 		}
+
+		_out << whitespace(1) << "constructor(...args) { }" << std::endl;
 	}
 
 	void write_method_list(TypeDef& type, bool include_signature)
@@ -517,13 +526,19 @@ public:
 			if (method.Flags().SpecialName())
 				continue;
 
+			if (name == "IndexOf")
+				continue; // dirty hack
+			
+			auto guard{ method.GenericParam() };
 			method_signature method_sig{ method };
-			std::string return_type_name = "void";
-			if (method_sig.return_signature())
-			{
-				auto return_type = get_type_semantics(method_sig.return_signature().Type());
-				return_type_name = projection_type_name(return_type, false);
+			std::vector<method_signature::param_t> out_params;
+			for (auto& param : method_sig.params()) {
+				if (param.first.Flags().Out())
+					out_params.push_back(param);
 			}
+
+			std::string return_type_name = get_return_type_name(method_sig, out_params);
+			bool should_throw = return_type_name != "void";
 
 			auto overload_attribute = get_attribute(method, "Windows.Foundation.Metadata", "OverloadAttribute");
 			if (overload_attribute)
@@ -558,7 +573,10 @@ public:
 			if (include_signature)
 			{
 				_out << " {" << std::endl;
-				_out << whitespace(2) << "throw new Error('not implemented')" << std::endl;
+				if (should_throw)
+					_out << whitespace(2) << "throw new Error('" << type.TypeName() << "#" << method_name << " not implemented')" << std::endl;
+				else
+					_out << whitespace(2) << "console.warn('" << type.TypeName() << "#" << method_name << " not implemented')" << std::endl;
 				_out << whitespace(1) << "}" << std::endl;
 			}
 			else
@@ -568,13 +586,58 @@ public:
 		}
 	}
 
-	void write_event_list(TypeDef& type)
+	std::string get_return_type_name(method_signature& method_sig, std::vector<method_signature::param_t>& out_params)
+	{
+		if (out_params.size() == 0)
+		{
+			if (method_sig.return_signature()) {
+				auto return_type_name = projection_type_name(get_type_semantics(method_sig.return_signature().Type()), false, true);
+				if (method_sig.return_signature().Type().is_szarray())
+					return return_type_name + "[]";
+
+				return return_type_name;
+			}
+
+			return "void";
+		}
+
+		if (out_params.size() == 1 && !method_sig.return_signature()) {
+			return projection_type_name(get_type_semantics(out_params[0].second->Type()), false, true);
+		}
+		
+		std::stringstream ss;
+		ss << "{ ";
+		bool first = true;
+		if (method_sig.return_signature()) {
+			first = false;
+			ss << normalise_member_name(method_sig.return_param_name("returnValue")) << ": " << projection_type_name(get_type_semantics(method_sig.return_signature().Type()), false, true);
+		}
+
+		for (auto& param : out_params) {
+			if (!first) {
+				ss << ", ";
+			}
+
+			ss << normalise_member_name(param.first.Name()) << ": " << projection_type_name(get_type_semantics(param.second->Type()), false, true);
+			if (param.second->Type().is_szarray())
+				ss << "[]";
+
+			first = false;
+		}
+
+		ss << " }";
+		return ss.str();
+	}
+
+	void write_event_list(TypeDef& type, bool is_interface)
 	{
 		if (distance(type.EventList()) == 0)
 			return;
 
-		_out << std::endl;
-
+		bool any_static = false;
+		bool any_nonstatic = false;
+		if (!is_interface)
+			_out << std::endl;
 		for (auto& event : type.EventList())
 		{
 			auto event_type = get_type_semantics(event.EventType());
@@ -585,30 +648,73 @@ public:
 
 			std::transform(event_name.begin(), event_name.end(), event_name.begin(), ::tolower);
 
-			_out << whitespace(1) << "private " << array_name << ": "
-				<< "Set<" << event_type_name << "> = new Set();" << std::endl;
+			std::string this_str = "this.";
 
-			if (_enable_decorators)
-			{
-				_importedTypes.insert("Windows.Foundation.Interop.Enumerable");
-				_out << whitespace(1) << "@Enumerable(true)" << std::endl;
+			if (!is_interface)
+				_out << whitespace(1) << "private ";
+			if ((add && add.Flags().Static()) || (remove && remove.Flags().Static())) {
+				this_str = typedef_name(type, false) + ".";
+				_out << "static ";
+				any_static = true;
+			}
+			else {
+				any_nonstatic = true;
 			}
 
-			_out << whitespace(1) << "set on" << event_name << "(handler: " << event_type_name << ") {" << std::endl;
-			_out << whitespace(2) << "this." << array_name << ".add(handler);" << std::endl;
-			_out << whitespace(1) << "}" << std::endl;
-			_out << std::endl;
+			if (is_interface) {
+				_out << whitespace(1) << "on" << event_name << ": " << event_type_name << ";" << std::endl;
+			}
+			else {
+				_out << array_name << ": " << "Set<" << event_type_name << "> = new Set();" << std::endl;
+
+				if (_enable_decorators)
+				{
+					_importedTypes.insert("Windows.Foundation.Interop.Enumerable");
+					_out << whitespace(1) << "@Enumerable(true)" << std::endl;
+				}
+
+				_out << whitespace(1);
+				if ((add && add.Flags().Static()) || (remove && remove.Flags().Static()))
+					_out << "static ";
+
+				_out << "set on" << event_name << "(handler: " << event_type_name << ")";
+				_out << " {" << std::endl;
+				_out << whitespace(2) << this_str << array_name << ".add(handler);" << std::endl;
+				_out << whitespace(1) << "}" << std::endl;
+				_out << std::endl;
+			}
 		}
 
-		write_event_listener_function(type, "add", "add");
-		_out << std::endl;
-		write_event_listener_function(type, "remove", "delete");
+		if (any_nonstatic) {
+			write_event_listener_function(type, "add", "add", false, is_interface);
+			if (!is_interface)
+				_out << std::endl;
+			write_event_listener_function(type, "remove", "delete", false, is_interface);
+		}
+
+		if (any_static) {
+			write_event_listener_function(type, "static add", "add", true, is_interface);
+			if (!is_interface)
+				_out << std::endl;
+			write_event_listener_function(type, "static remove", "delete", true, is_interface);
+		}
 	}
 
-	void write_event_listener_function(winmd::reader::TypeDef& type, const std::string_view& name, const std::string_view& method)
+	void write_event_listener_function(winmd::reader::TypeDef& type, const std::string_view& name, const std::string_view& method, bool do_static, bool is_interface)
 	{
-		_out << whitespace(1) << name << "EventListener(name: string, handler: any) {" << std::endl;
+		_out << whitespace(1) << name << "EventListener(name: string, handler: any)";
+		if (is_interface) {
+			_out << std::endl;
+			return;
+		}
+
+		_out << " {" << std::endl;
 		_out << whitespace(2) << "switch (name) {" << std::endl;
+
+		std::string this_str = "this.";
+		if (do_static) {
+			this_str = typedef_name(type, false) + ".";
+		}
 
 		for (auto& event : type.EventList())
 		{
@@ -616,16 +722,21 @@ public:
 			auto event_type_name = type_name(event_type, false);
 			auto event_name = normalise_member_name(event.Name());
 			auto array_name = "__" + normalise_member_name(event.Name());
+			auto [add, remove] = get_event_methods(event);
+
+			if (((add && add.Flags().Static()) || (remove && remove.Flags().Static())) && !do_static) {
+				return;
+			}
 
 			std::transform(event_name.begin(), event_name.end(), event_name.begin(), ::tolower);
 
 			_out << whitespace(3) << "case '" << event_name << "':" << std::endl;
-			_out << whitespace(4) << "this." << array_name << "." << method << "(handler);" << std::endl;
+			_out << whitespace(4) << this_str << array_name << "." << method << "(handler);" << std::endl;
 			_out << whitespace(4) << "break;" << std::endl;
 		}
 
 		auto super_semantics = get_type_semantics(type.Extends());
-		if (type.Extends() && type.Extends().TypeDef() && distance(type.Extends().TypeDef().EventList()) > 0)
+		if (!do_static && type.Extends() && type.Extends().TypeDef() && distance(type.Extends().TypeDef().EventList()) > 0)
 		{
 			_out << whitespace(3) << "default:" << std::endl;
 			_out << whitespace(4) << "super." << name << "EventListener(name, handler);" << std::endl;
@@ -636,17 +747,22 @@ public:
 		_out << whitespace(1) << "}" << std::endl;
 	}
 
-	void write_parameter_list(method_signature& method_sig)
+	void write_parameter_list(method_signature& method_sig, bool skip_first = false)
 	{
 		bool first = true;
-		for (auto& param : method_sig.params())
+		for (size_t i = skip_first ? 1 : 0; i < method_sig.params().size(); i++)
 		{
+			auto& param = method_sig.params()[i];
+
+			if (param.first.Flags().Out())
+				continue;
+
 			if (!first)
 				_out << ", ";
 			first = false;
 
 			auto param_type = get_type_semantics(param.second->Type());
-			auto param_type_name = projection_type_name(param_type, false);
+			auto param_type_name = projection_type_name(param_type, false, true);
 
 			_out << normalise_member_name(param.first.Name()) << ": " << param_type_name;
 		}
@@ -781,9 +897,18 @@ public:
 		});
 	}
 
-	std::string typedef_name(type_definition const& type, bool relative)
+	std::string typedef_name(type_definition const& type, bool relative, bool fullyProjected = false)
 	{
 		_importedTypes.insert(std::string(type.TypeNamespace()) + "." + std::string(type.TypeName()));
+
+		if (fullyProjected) {
+			if (_namespace_type_map.find(type.TypeNamespace()) != _namespace_type_map.end()) {
+				auto ns_map = _namespace_type_map[type.TypeNamespace()];
+				if (ns_map.find(type.TypeName()) != ns_map.end()) {
+					return std::string(ns_map[type.TypeName()]);
+				}
+			}
+		}
 
 		std::stringstream s;
 		std::vector<std::string> type_bits = tokenise_string(std::string(type.TypeNamespace()), ".");
@@ -851,11 +976,16 @@ public:
 		return s.str();
 	}
 
-	std::string generic_type_instance_name(generic_type_instance const& type, bool relative)
+	std::string generic_type_instance_name(generic_type_instance const& type, bool relative, bool fullyProjected)
 	{
 		std::stringstream s;
 		auto guard{ push_generic_args(type) };
 		auto first = true;
+
+		if (fullyProjected && type.generic_type.TypeName() == "IReference`1") {
+			return std::string(projection_type_name(get_generic_arg(0), relative, true)) + " | null";
+		}
+
 		s << projection_type_name(type.generic_type, relative) << "<";
 		for (auto x : type.generic_args)
 		{
@@ -880,16 +1010,16 @@ public:
 		return s.str();
 	}
 
-	std::string projection_type_name(type_semantics const& s, bool relative)
+	std::string projection_type_name(type_semantics const& s, bool relative, bool fullyProjected = false)
 	{
 		return call(
 			s,
 			[&](object_type) { return std::string("any"); },
 			[&](guid_type) { return std::string("string"); },
 			[&](type_type) { return std::string("any"); },
-			[&](type_definition const& type) { return typedef_name(type, relative); },
+			[&](type_definition const& type) { return typedef_name(type, relative, fullyProjected); },
 			[&](generic_type_index const& var) { return generic_type_name(var, relative); },
-			[&](generic_type_instance const& type) { return generic_type_instance_name(type, relative); },
+			[&](generic_type_instance const& type) { return generic_type_instance_name(type, relative, fullyProjected); },
 			[&](generic_type_param const& param) { return std::string(param.Name()); },
 			[&](fundamental_type const& type) { return fundamental_type_name(type); });
 	}
