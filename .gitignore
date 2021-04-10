@@ -16,7 +16,7 @@
 # Mono auto generated files
 mono_crash.*
 
-[Ww]indows/
+[Oo]utput/
 
 # Build results
 [Dd]ebug/
