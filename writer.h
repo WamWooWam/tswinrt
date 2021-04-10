@@ -601,7 +601,7 @@ public:
                 _out << whitespace(2);
 
                 if (return_type_name.rfind("IAsyncActionWithProgress", 0) == 0) {
-                    _importedTypes.insert("Windows.Foundation.Interop.AsyncActionWithProgress");
+                    _importedTypes.insert("Windows.Foundation.Interop.AsyncActionWithProgress`1");
                     _out << "AsyncActionWithProgress.from(async () => console.warn('" << type.TypeName() << "#" << method_name << " not implemented'));";
                 }
                 else if (return_type_name.rfind("IAsyncAction", 0) == 0) {
@@ -609,11 +609,11 @@ public:
                     _out << "AsyncAction.from(async () => console.warn('" << type.TypeName() << "#" << method_name << " not implemented'));";
                 }
                 else if (return_type_name.rfind("IAsyncOperationWithProgress", 0) == 0) {
-                    _importedTypes.insert("Windows.Foundation.Interop.AsyncActionWithProgress");
-                    _out << "AsyncActionWithProgress.from(async () => { throw new Error('" << type.TypeName() << "#" << method_name << " not implemented') });";
+                    _importedTypes.insert("Windows.Foundation.Interop.AsyncOperationWithProgress`2");
+                    _out << "AsyncOperationWithProgress.from(async () => { throw new Error('" << type.TypeName() << "#" << method_name << " not implemented') });";
                 }
                 else if (return_type_name.rfind("IAsyncOperation", 0) == 0) {
-                    _importedTypes.insert("Windows.Foundation.Interop.AsyncOperation");
+                    _importedTypes.insert("Windows.Foundation.Interop.AsyncOperation`1");
                     _out << "AsyncOperation.from(async () => { throw new Error('" << type.TypeName() << "#" << method_name << " not implemented') });";
                 }
                 else if (should_throw) {
