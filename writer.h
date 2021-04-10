@@ -602,19 +602,19 @@ public:
 
                 if (return_type_name.rfind("IAsyncActionWithProgress", 0) == 0) {
                     _importedTypes.insert("Windows.Foundation.Interop.AsyncActionWithProgress`1");
-                    _out << "AsyncActionWithProgress.from(async () => console.warn('" << type.TypeName() << "#" << method_name << " not implemented'));";
+                    _out << "return AsyncActionWithProgress.from(async () => console.warn('" << type.TypeName() << "#" << method_name << " not implemented'));";
                 }
                 else if (return_type_name.rfind("IAsyncAction", 0) == 0) {
                     _importedTypes.insert("Windows.Foundation.Interop.AsyncAction");
-                    _out << "AsyncAction.from(async () => console.warn('" << type.TypeName() << "#" << method_name << " not implemented'));";
+                    _out << "return AsyncAction.from(async () => console.warn('" << type.TypeName() << "#" << method_name << " not implemented'));";
                 }
                 else if (return_type_name.rfind("IAsyncOperationWithProgress", 0) == 0) {
                     _importedTypes.insert("Windows.Foundation.Interop.AsyncOperationWithProgress`2");
-                    _out << "AsyncOperationWithProgress.from(async () => { throw new Error('" << type.TypeName() << "#" << method_name << " not implemented') });";
+                    _out << "return AsyncOperationWithProgress.from(async () => { throw new Error('" << type.TypeName() << "#" << method_name << " not implemented') });";
                 }
                 else if (return_type_name.rfind("IAsyncOperation", 0) == 0) {
                     _importedTypes.insert("Windows.Foundation.Interop.AsyncOperation`1");
-                    _out << "AsyncOperation.from(async () => { throw new Error('" << type.TypeName() << "#" << method_name << " not implemented') });";
+                    _out << "return AsyncOperation.from(async () => { throw new Error('" << type.TypeName() << "#" << method_name << " not implemented') });";
                 }
                 else if (should_throw) {
                     _out << "throw new Error('" << type.TypeName() << "#" << method_name << " not implemented')";
