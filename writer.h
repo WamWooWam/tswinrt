@@ -598,11 +598,32 @@ public:
 
             if (include_signature) {
                 _out << " {" << std::endl;
-                if (should_throw)
-                    _out << whitespace(2) << "throw new Error('" << type.TypeName() << "#" << method_name << " not implemented')" << std::endl;
-                else
-                    _out << whitespace(2) << "console.warn('" << type.TypeName() << "#" << method_name << " not implemented')" << std::endl;
-                _out << whitespace(1) << "}" << std::endl;
+                _out << whitespace(2);
+
+                if (return_type_name.rfind("IAsyncActionWithProgress", 0) == 0) {
+                    _importedTypes.insert("Windows.Foundation.Interop.AsyncActionWithProgress");
+                    _out << "AsyncActionWithProgress.from(async () => console.warn('" << type.TypeName() << "#" << method_name << " not implemented'));";
+                }
+                else if (return_type_name.rfind("IAsyncAction", 0) == 0) {
+                    _importedTypes.insert("Windows.Foundation.Interop.AsyncAction");
+                    _out << "AsyncAction.from(async () => console.warn('" << type.TypeName() << "#" << method_name << " not implemented'));";
+                }
+                else if (return_type_name.rfind("IAsyncOperationWithProgress", 0) == 0) {
+                    _importedTypes.insert("Windows.Foundation.Interop.AsyncActionWithProgress");
+                    _out << "AsyncActionWithProgress.from(async () => { throw new Error('" << type.TypeName() << "#" << method_name << " not implemented') });";
+                }
+                else if (return_type_name.rfind("IAsyncOperation", 0) == 0) {
+                    _importedTypes.insert("Windows.Foundation.Interop.AsyncOperation");
+                    _out << "AsyncOperation.from(async () => { throw new Error('" << type.TypeName() << "#" << method_name << " not implemented') });";
+                }
+                else if (should_throw) {
+                    _out << "throw new Error('" << type.TypeName() << "#" << method_name << " not implemented')";
+                }
+                else {
+                    _out << "console.warn('" << type.TypeName() << "#" << method_name << " not implemented')";
+                }
+
+                _out << std::endl << whitespace(1) << "}" << std::endl;
             }
             else {
                 _out << ";" << std::endl;
@@ -926,7 +947,6 @@ public:
     }
 
     std::string typedef_name(type_definition const& type, bool relative, bool fullyProjected = false) {
-        _importedTypes.insert(std::string(type.TypeNamespace()) + "." + std::string(type.TypeName()));
 
         if (fullyProjected) {
             if (_namespace_type_map.find(type.TypeNamespace()) != _namespace_type_map.end()) {
@@ -936,6 +956,8 @@ public:
                 }
             }
         }
+
+        _importedTypes.insert(std::string(type.TypeNamespace()) + "." + std::string(type.TypeName()));
 
         std::stringstream s;
         std::vector<std::string> type_bits = tokenise_string(std::string(type.TypeNamespace()), ".");
