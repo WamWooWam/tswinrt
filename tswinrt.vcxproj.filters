@@ -26,6 +26,9 @@
     <ClInclude Include="writer.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="interop\interop.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <None Include="packages.config" />

@@ -6,6 +6,7 @@
 #include <sstream>
 #include <filesystem>
 #include <winmd_reader.h>
+#include <comdef.h>
 #include "helpers.h"
 
 using namespace winmd::reader;
@@ -430,9 +431,12 @@ public:
     }
 
     void write_properties(TypeDef& type, bool is_interface = false) {
+        IInspectable* instance = nullptr;
+        IInspectable* statics = nullptr;
         for (auto prop : type.PropertyList()) {
             auto semantics = get_type_semantics(prop.Type().Type());
             auto [getter, setter] = get_property_methods(prop);
+            GUID value;
 
             //if (!is_interface && (getter && !setter))
             //{
@@ -458,9 +462,34 @@ public:
             //else
             //{
             _out << whitespace(1);
-            if ((getter && getter.Flags().Static()) || (setter && setter.Flags().Static())) // technically impossible
-            {
+            std::vector<void*> args;
+            interop::call_invoker invoker;
+
+            if ((getter && getter.Flags().Static()) || (setter && setter.Flags().Static()) && !this->first_pass) {
                 _out << "static ";
+                
+                if (!is_interface) {
+                    std::cout << "Calling function " << type.TypeNamespace() << "." << type.TypeName() << "#" << getter.Name() << ": ";
+                    std::cout.flush();
+                    auto hr = invoker.invoke(getter, &statics, (void*)&value, args);
+                    std::wcout << _com_error(hr).ErrorMessage() << std::endl;
+                    std::wcout.flush();
+
+                    if (FAILED(hr)) {
+
+                    }
+                }
+            }
+            else if (!is_interface && has_attribute(type, "Windows.Foundation.Metadata", "ActivatableAttribute") && !this->first_pass) {
+                std::cout << "Calling instance function " << type.TypeNamespace() << "." << type.TypeName() << "#" << getter.Name() << ": ";
+                std::cout.flush();
+                auto hr = invoker.invoke(getter, &instance, (void*)&value, args);
+                std::wcout << _com_error(hr).ErrorMessage() << std::endl;
+                std::wcout.flush();
+
+                if (FAILED(hr)) {
+
+                }
             }
 
             if ((getter) && !(setter)) {
@@ -475,7 +504,6 @@ public:
                 _out << " = null";
 
             _out << ";" << std::endl;
-            ;
             //}
         }
     }
@@ -623,7 +651,8 @@ public:
                     _out << "console.warn('" << type.TypeName() << "#" << method_name << " not implemented')";
                 }
 
-                _out << std::endl << whitespace(1) << "}" << std::endl;
+                _out << std::endl
+                     << whitespace(1) << "}" << std::endl;
             }
             else {
                 _out << ";" << std::endl;
@@ -824,7 +853,6 @@ public:
         if (static_cast<bool>(type) && !(should_project_type(type))) {
             // assign any to direct references to unprojected types
             _out << "type " << type.TypeName() << " = any" << std::endl;
-            ;
         }
         else {
             // we assume non-existent types are synthesised after the fact
